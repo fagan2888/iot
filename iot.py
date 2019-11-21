@@ -25,13 +25,13 @@ model.A2 = pyomo.Set(initialize=[0, 1, 2])
 model.A3 = pyomo.Set(initialize=[0, 1, 2])
 
 model.E = pyomo.Param(model.N, default=0.1)
-model.Pr = pyomo.Param(model.N, default=0.1)
+model.Pr = pyomo.Param(model.T, default=0.1)
 model.P = pyomo.Param(model.N, default=0.1)
 
 
-ET = {0: 1,
-      1: 2,
-      2: 3}
+ET = {0: 2,
+      1: 3,
+      2: 4}
 
 ST = {0: 1,
       1: 2,
@@ -54,6 +54,11 @@ model.mdc = pyomo.Param(initialize=10)
 
 model.DSA = pyomo.Var(model.T, model.N, within=pyomo.Binary)
   
+
+def obj_rule(model):
+    return sum(model.E[n] * sum((model.Pr[t] * model.DSA[t, n]) * (model.Pr[t] * model.DSA[t, n]) for t in model.T) for n in model.N)
+model.obj = pyomo.Objective(rule=obj_rule, sense=pyomo.minimize)
+
 def loadMax_rule(model, t):
     return sum(model.DSA[t, n] * model.P[n] for n in model.N) <= model.dmax
 model.loadMax = pyomo.Constraint(model.T, rule=loadMax_rule)    
@@ -97,11 +102,4 @@ def a3Category_rule(model, n):
 model.a3Category = pyomo.Constraint(model.A3, rule=a3Category_rule)
 
    
-
-t, n
-expr = solver.Sum([(Pr[j] * DSA[j, i]) * (Pr[j] * DSA[j, i]) for j in range(T.size)])
-expr = solver.Sum(E[i] * solver.Sum((Pr[j] * DSA[j, i]) * (Pr[j] * DSA[j, i]) for j in range(T.size)) for i in range(N.size))
-
-
-
 
