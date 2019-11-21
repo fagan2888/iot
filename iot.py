@@ -7,47 +7,101 @@ Created on Tue Nov 19 14:47:57 2019
 """
 
 
-from ortools.linear_solver import pywraplp
+import pyomo.environ as pyomo
 import numpy as np
 
-try:
-    T = np.arange(0, 24, 1)
-    N = np.arange(0, 10, 1)
-    
-    Pr = np.arange(0, 10, 10)
-    E = np.arange(0, 10, 10)
-    
-    
-    
-    
-    
-    # Create a new model
-    m = Model("iot")
+model = pyomo.ConcreteModel()
 
-    # Create variables
-    dsa = m.addVars(T.size, N.size, vtype=GRB.BINARY, name='DSA')
-    
-    
-    # Set objective
-    m.setObjective(x + y + 2 * z, GRB.MAXIMIZE)
+T = 24
+N = 9
 
-    # Add constraint: x + 2 y + 3 z <= 4
-    m.addConstr(x + 2 * y + 3 * z <= 4, "c0")
+price = np.array([0.13, 0.13, 0.15, 0.14, 0.14, 0.16, 0.17, 0.17, 0.16, 0.16, 0.2, 0.22, 0.22, 0.22, 0.17, 0.17, 0.17, 0.2, 0.2, 0.2, 0.19, 0.19, 0.18, 0.17])
 
-    # Add constraint: x + y >= 1
-    m.addConstr(x + y >= 1, "c1")
+model.T = pyomo.RangeSet(0, T)
+model.N = pyomo.RangeSet(0, N)
 
-    # Optimize model
-    m.optimize()
+model.A1 = pyomo.RangeSet(0, N)
+model.A2 = pyomo.Set(initialize=[0, 1, 2])
+model.A3 = pyomo.Set(initialize=[0, 1, 2])
 
-    for v in m.getVars():
-        print('%s %g' % (v.varName, v.x))
+model.E = pyomo.Param(model.N, default=0.1)
+model.Pr = pyomo.Param(model.N, default=0.1)
+model.P = pyomo.Param(model.N, default=0.1)
 
-    print('Obj: %g' % m.objVal)
 
-except GurobiError as e:
-    print('Error code ' + str(e.errno) + ": " + str(e))
+ET = {0: 1,
+      1: 2,
+      2: 3}
 
-except AttributeError:
-    print('Encountered an attribute error')
+ST = {0: 1,
+      1: 2,
+      2: 3}
+model.ET = pyomo.Param(range(3), initialize=ET)
+model.ST = pyomo.Param(range(3), initialize=ST)
+
+
+def req_init(model, i):
+    return i + 1
+model.Req = pyomo.Param(model.N, initialize=req_init)
+
+
+model.dmax = pyomo.Param(initialize=3)
+model.dmin = pyomo.Param(initialize=0)
+model.rd = pyomo.Param(initialize=1)
+model.ru = pyomo.Param(initialize=1)
+model.mdc = pyomo.Param(initialize=10)
+
+
+model.DSA = pyomo.Var(model.T, model.N, within=pyomo.Binary)
+  
+def loadMax_rule(model, t):
+    return sum(model.DSA[t, n] * model.P[n] for n in model.N) <= model.dmax
+model.loadMax = pyomo.Constraint(model.T, rule=loadMax_rule)    
+
+
+def loadMin_rule(model, t):
+    return sum(model.DSA[t, n] * model.P[n] for n in model.N) >= model.dmin
+model.loadMin = pyomo.Constraint(model.T, rule=loadMin_rule)    
+
+
+def rampIndex(model):
+    for t in model.T:
+        if t < len(model.T) - 1:
+            yield t
+            
+def rampMin_rule(model, t):
+    return sum((model.DSA[t, n] - model.DSA[t + 1, n]) * model.P[n] for n in model.N) <= model.rd
+model.rampMin = pyomo.Constraint(rampIndex, rule=rampMin_rule)
+
+
+def rampMax_rule(model, t):
+    return sum((model.DSA[t + 1, n] - model.DSA[t, n]) * model.P[n] for n in model.N) <= model.ru
+model.rampMax = pyomo.Constraint(rampIndex, rule=rampMax_rule)
+
+
+def minimumConsumption_rule(model):
+    return sum(sum(model.DSA[t, n] * model.E[n] for t in model.T) for n in model.N) >= model.mdc
+model.minimumConsumption = pyomo.Constraint(rule=minimumConsumption_rule)
+
+
+def a1Category_rule(model, n):
+    return sum(model.DSA[t, n] for t in model.T) >= model.Req[n]
+model.a1Category = pyomo.Constraint(model.A1, rule=a1Category_rule)
+
+def a2Category_rule(model, n):
+    return sum(pyomo.prod([model.DSA[t, n] for t in range(q, model.Req[n] + q)]) for q in range(len(model.T) - model.Req[n])) >= 1
+model.a2Category = pyomo.Constraint(model.A2, rule=a2Category_rule)
+
+def a3Category_rule(model, n):
+    return sum(model.DSA[t, n] for t in range(model.ST[n], model.ET[n])) >= model.Req[n]
+model.a3Category = pyomo.Constraint(model.A3, rule=a3Category_rule)
+
+   
+
+t, n
+expr = solver.Sum([(Pr[j] * DSA[j, i]) * (Pr[j] * DSA[j, i]) for j in range(T.size)])
+expr = solver.Sum(E[i] * solver.Sum((Pr[j] * DSA[j, i]) * (Pr[j] * DSA[j, i]) for j in range(T.size)) for i in range(N.size))
+
+
+
 
